@@ -46,15 +46,20 @@ fi
 
 # $comp  holds the files and options that will be passed to the compiler
 # $fname will become the program's argv[0]
-for arg in $1; do
-    if [[ "$arg" == "--" ]]; then
-        fname="$2"
-        comp+=("$2")
-        shift
-    else
-        comp+=("$arg")
-    fi
-done
+if [[ $# -eq 1 ]]; then
+    fname="$1"
+    comp+=("$1")
+else
+    for arg in $1; do
+        if [[ "$arg" == "--" ]]; then
+            fname="$2"
+            comp+=("$2")
+            shift
+        else
+            comp+=("$arg")
+        fi
+    done
+fi
 
 # If we don't have an fname yet, pick one out of $comp
 # that doesn't start with a '-'
@@ -92,21 +97,21 @@ if ! type "$shasum" &>/dev/null; then
 fi
 
 # determine if we are C or C++, then use appropriate flags
-for f in ${comp[@]}; do
+is_cpp=false
+for f in "${comp[@]}"; do
     if [[ -f "$f" && "$f" =~ \.(cc|c\+\+|cpp|cxx)$ ]]; then
+        is_cpp=true
         comp+=($CXXFLAGS "-lstdc++")
         type "$CXX" &>/dev/null && CC="$CXX"
         break
-    else
-        comp+=($CFLAGS)
-        break
     fi
 done
+[[ "$is_cpp" == false ]] && comp+=($CFLAGS)
 comp+=($CPPFLAGS)
 
 # create calculated biname
 cachename="$("$shasum" <<< "$CC")"
-for f in ${comp[@]}; do
+for f in "${comp[@]}"; do
     # first, append sha1sums of all files and options into one long string
     if [[ -f "$f" ]]; then
         cachename+="$("$shasum" "$f" | cut -d' ' -f1)"
@@ -141,14 +146,14 @@ else
 fi
 
 # assemble our includes, based on the original file locations
-includes="-I$(pwd)"
-for f in ${comp[@]}; do
-    [[ -f "$f" ]] && includes+=" -I$(dirname "$f")"
+includes+=("-I$(pwd)")
+for f in "${comp[@]}"; do
+    [[ -f "$f" ]] && includes+=("-I$(dirname "$f")")
 done
 
 # copy source files to $tmpdir
 i=0
-for f in ${comp[@]}; do
+for f in "${comp[@]}"; do
     if [[ -f "$f" && "$f" != $tmpdir* ]]; then
         mkdir -p "$tmpdir/$(dirname "$f")"
         cp "$f" "$tmpdir/$f"
@@ -166,14 +171,14 @@ for f in ${comp[@]}; do
 done
 
 # remove shebangs
-for f in ${comp[@]}; do
+for f in "${comp[@]}"; do
     if [[ -f "$f" ]] && [[ "$(head -n1 "$f")" == \#\!* ]]; then
         echo "$(tail -n +2 "$f")" > "$f"
     fi
 done
 
 # compile and run
-if "$CC" -O2 -o "$binname" ${comp[@]} $includes; then
+if "$CC" -O2 -o "$binname" "${comp[@]}" "${includes[@]}"; then
     run "$@"
 else
     cleanup
